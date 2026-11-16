@@ -22,6 +22,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.firebase.Firebase
+import com.google.firebase.ai.GenerativeBackend
+import com.google.firebase.ai.ai
+import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
+import kotlinx.coroutines.launch
 
 private val Orange = Color(0xFFFF7900)
 private val Dark = Color(0xFF101010)
@@ -33,6 +38,12 @@ data class ChatMessage(val text: String, val fromUser: Boolean)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        Firebase.initialize(context = this)
+        Firebase.appCheck.installAppCheckProviderFactory(
+            DebugAppCheckProviderFactory.getInstance()
+        )
+
         setContent { FridayApp() }
     }
 }
@@ -40,10 +51,59 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun FridayApp() {
     var input by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+
+    val scope = rememberCoroutineScope()
     val messages = remember {
         mutableStateListOf(
-            ChatMessage("Hello. I’m FRIDAY. Your assistant is ready for setup.", false)
+            ChatMessage("Hello. I'm FRIDAY. Gemini AI is ready to connect.", false)
         )
+    }
+
+    val model = remember {
+        Firebase.ai(backend = GenerativeBackend.googleAI())
+            .generativeModel("gemini-3.8-flash")
+    }
+
+    fun sendMessage() {
+        val userText = input.trim()
+        if (userText.isEmpty() || isLoading) return
+
+        messages.add(ChatMessage(userText, true))
+        input = ""
+
+        val prompt = buildString {
+            append(
+                "You are FRIDAY, a helpful, intelligent and polite personal AI assistant. " +
+                "Speak naturally and clearly. Keep answers useful and easy to understand.\n\n"
+            )
+            messages.takeLast(12).forEach { message ->
+                append(if (message.fromUser) "User: " else "FRIDAY: ")
+                append(message.text)
+                append("\n")
+            }
+            append("\nReply to the latest user message.")
+        }
+
+        isLoading = true
+
+        scope.launch {
+            try {
+                val response = model.generateContent(prompt)
+                val answer = response.text?.takeIf { it.isNotBlank() }
+                    ?: "I couldn't generate a response. Please try again."
+                messages.add(ChatMessage(answer, false))
+            } catch (e: Exception) {
+                messages.add(
+                    ChatMessage(
+                        "I couldn't connect to Gemini. Please check your internet and Firebase App Check setup. Error: ${e.localizedMessage ?: "Unknown error"}",
+                        false
+                    )
+                )
+            } finally {
+                isLoading = false
+            }
+        }
     }
 
     MaterialTheme {
@@ -57,7 +117,12 @@ fun FridayApp() {
             ) {
                 Column {
                     Text("FRIDAY", color = Orange, fontSize = 26.sp)
-                    Text("PERSONAL AI ASSISTANT", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+                    Text(
+                        "PERSONAL AI ASSISTANT",
+                        color = Muted,
+                        fontSize = 10.sp,
+                        letterSpacing = 2.sp
+                    )
                 }
                 IconButton(onClick = { }) {
                     Icon(Icons.Default.History, contentDescription = "History", tint = Orange)
@@ -82,7 +147,8 @@ fun FridayApp() {
                                 .background(
                                     if (message.fromUser) Color(0xFF38200F) else Panel,
                                     RoundedCornerShape(16.dp)
-                                ).padding(14.dp)
+                                )
+                                .padding(14.dp)
                         ) {
                             Text(
                                 if (message.fromUser) "YOU" else "FRIDAY",
@@ -94,17 +160,28 @@ fun FridayApp() {
                         }
                     }
                 }
+
+                if (isLoading) {
+                    item {
+                        Text("FRIDAY is thinking...", color = Orange, fontSize = 13.sp)
+                    }
+                }
             }
 
             Row(
-                Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(24.dp)).padding(horizontal = 10.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth()
+                    .background(Panel, RoundedCornerShape(24.dp))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { /* Add image/video picker in next phase */ }) {
+                IconButton(onClick = { }) {
                     Icon(Icons.Default.Add, contentDescription = "Attach media", tint = Orange)
                 }
+
                 Box(Modifier.weight(1f).padding(horizontal = 8.dp)) {
-                    if (input.isEmpty()) Text("Message FRIDAY...", color = Muted)
+                    if (input.isEmpty()) {
+                        Text("Message FRIDAY...", color = Muted)
+                    }
                     BasicTextField(
                         value = input,
                         onValueChange = { input = it },
@@ -112,24 +189,25 @@ fun FridayApp() {
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-                IconButton(onClick = { /* Voice capture is implemented in a later phase */ }) {
+
+                IconButton(onClick = { }) {
                     Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Orange)
                 }
-                IconButton(onClick = {
-                    val text = input.trim()
-                    if (text.isNotEmpty()) {
-                        messages.add(ChatMessage(text, true))
-                        messages.add(ChatMessage("I received your message. Connect Gemini in the next setup phase to enable AI replies.", false))
-                        input = ""
-                    }
-                }) {
+
+                IconButton(
+                    onClick = { sendMessage() },
+                    enabled = !isLoading
+                ) {
                     Icon(Icons.Default.Send, contentDescription = "Send", tint = Orange)
                 }
             }
+
             Spacer(Modifier.height(6.dp))
             Text(
-                "Starter interface • AI, voice and device actions require configuration",
-                color = Muted, fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterHorizontally)
+                "Gemini AI • Voice and device actions coming in later phases",
+                color = Muted,
+                fontSize = 10.sp,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
             )
         }
     }
