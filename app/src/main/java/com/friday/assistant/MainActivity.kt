@@ -23,7 +23,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.Firebase
-import com.google.firebase.ai.GenerativeBackend
+import com.google.firebase.initialize
+import com.google.firebase.appcheck.appCheck
+import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.ai.ai
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import kotlinx.coroutines.launch
